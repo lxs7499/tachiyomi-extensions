@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.extension.id.doujindesu
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
@@ -10,6 +11,8 @@ import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.FormBody
+import okhttp3.Headers
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
@@ -355,7 +358,7 @@ class DoujinDesu : ParsedHttpSource() {
         manga.author = document.select("section.metadata > table:nth-child(2) > tbody > tr.pages > td:contains(Author) + td:nth-child(2) > a").joinToString { it.text() }
         manga.genre = infoElement.select("div.tags > a").joinToString { it.text() }
         manga.status = parseStatus(document.select("section.metadata > table:nth-child(2) > tbody > tr:nth-child(1) > td:nth-child(2) > a").first()!!.text())
-        manga.thumbnail_url = document.select("figure.thumbnail > img").attr("src")
+        manga.thumbnail_url = document.select("figure.thumbnail > a > img").attr("src")
         manga.artist = document.select("section.metadata > table:nth-child(2) > tbody > tr.pages > td:contains(Character) + td:nth-child(2) > a").joinToString { it.text() }
 
         return manga
@@ -372,7 +375,9 @@ class DoujinDesu : ParsedHttpSource() {
         }
         chapter.date_upload = reconstructDate(element.select("div.epsleft > span.date").text())
         chapter.name = element.select("div.epsleft > span.lchx > a").text()
-        chapter.setUrlWithoutDomain(element.select("div.epsleft > span.lchx > a").attr("href"))
+
+        val chapterPostfix = element.select("div.epsleft > span.lchx > a").attr("href")
+        chapter.setUrlWithoutDomain("$baseUrl$chapterPostFix")
 
         return chapter
     }
@@ -383,8 +388,20 @@ class DoujinDesu : ParsedHttpSource() {
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not Used")
 
     override fun pageListParse(document: Document): List<Page> {
-        return document.select("#reader > div.main > div > img").mapIndexed { i, element ->
+        val chapterId = document.select("#reader").attr("data-id")
+        val imageElement = parseListImageUrl(chapterId)
+        return imageElement.select("img").mapIndexed { i, element ->
             Page(i, "", element.attr("src"))
         }
+    }
+
+    private fun parseListImageUrl(chapterId: String): Document {
+        val formBody = FormBody.Builder()
+            .add("id", chapterId)
+            .build()
+
+        return client.newCall(
+            POST("$baseUrl/themes/ajax/ch.php", headers, formBody)
+        ).execute().asJsoup()
     }
 }
